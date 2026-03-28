@@ -46,7 +46,7 @@ public class SecurityConfiguration {
         );
 
         http.csrf(AbstractHttpConfigurer::disable);
-        http.cors(AbstractHttpConfigurer::disable);
+        http.cors(cors -> cors.configurationSource(configurationSource()));
 
         http.exceptionHandling(exception ->
                 exception.authenticationEntryPoint(jwtAuthenticationEntryPoint)
@@ -74,7 +74,7 @@ public class SecurityConfiguration {
     @Bean
     public CorsConfigurationSource configurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("temp"));
+        configuration.setAllowedOrigins(List.of("http://temp:8080", "http://localhost:5173/"));
         configuration.setAllowedMethods(List.of("*"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
