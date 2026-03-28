@@ -54,7 +54,7 @@ public class AuthController implements AuthApi {
                 .httpOnly(true)
                 .secure(true)
                 .sameSite("Strict")
-                .path("/api/auth")
+                .path("/api/v1/auth")
                 .maxAge(Duration.ofMillis(refreshTokenExpiration))
                 .build();
 
@@ -78,7 +78,7 @@ public class AuthController implements AuthApi {
                 .httpOnly(true)
                 .secure(true)
                 .sameSite("Strict")
-                .path("/api/auth")
+                .path("/api/v1/auth")
                 .maxAge(Duration.ofMillis(refreshTokenExpiration))
                 .build();
 
