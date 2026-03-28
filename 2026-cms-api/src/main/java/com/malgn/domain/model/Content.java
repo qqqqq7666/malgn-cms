@@ -1,6 +1,5 @@
 package com.malgn.domain.model;
 
-import com.malgn.presentation.dto.request.content.ContentUpdateRequest;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
