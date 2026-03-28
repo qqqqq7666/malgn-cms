@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, LogOut, Edit, Trash2, Plus, ArrowLeft, Search, Eye, Clock, RotateCcw } from 'lucide-react';
+import { User, LogOut, Edit, Trash2, Plus, ArrowLeft, Search, Eye, Clock, RotateCcw, Timer, RefreshCw, ShieldCheck, AlertCircle } from 'lucide-react';
 
 // ==========================================
 // 백엔드 API 주소 설정
@@ -12,28 +12,43 @@ const API_BASE = 'http://localhost:8080/api/v1';
 export default function App() {
   // --- 상태 관리 ---
   const [view, setView] = useState('list'); // list, detail, form, login, signup
-  const [auth, setAuth] = useState({ token: null, username: null });
+  const [auth, setAuth] = useState(() => {
+    const savedToken = localStorage.getItem('accessToken');
+    const savedUsername = localStorage.getItem('username');
+    return savedToken ? { token: savedToken, username: savedUsername } : { token: null, username: null };
+  });
+  // 토큰 만료 시간 상태 (타임스탬프 저장)
+  const [tokenExpirations, setTokenExpirations] = useState(() =>{
+    const access = localStorage.getItem('accessExp');
+    const refresh = null;
+    return {
+      // localStorage는 모든 값을 '문자열'로 저장하므로, 숫자로 변환해주면 좋습니다.
+      access: access ? parseInt(access, 10) : null,
+      refresh: refresh
+    };
+  });
+
   const [contents, setContents] = useState([]);
   const [selectedContent, setSelectedContent] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
+
   // 검색 조건 상태 추가
   const [searchParams, setSearchParams] = useState({ type: 'title', keyword: '' });
 
   // --- API 호출 공통 함수 ---
   const apiFetch = async (endpoint, options = {}) => {
-    const headers = { 
-      'Content-Type': 'application/json', 
-      ...options.headers 
+    const headers = {
+      'Content-Type': 'application/json',
+      ...options.headers
     };
-    
+
     // Access Token이 있으면 Authorization 헤더에 추가
     if (auth.token) {
       headers['Authorization'] = `Bearer ${auth.token}`;
     }
-    
-    // Refresh Token 쿠키를 주고받기 위해 credentials 옵션 추가
+
+    // Refresh Token 쿠키를 주고받기 위해 credentials 옵션 추가 (필수)
     const fetchOptions = {
       ...options,
       headers,
@@ -42,18 +57,18 @@ export default function App() {
 
     try {
       const response = await fetch(`${API_BASE}${endpoint}`, fetchOptions);
-      
+
       // 204 No Content 처리 (삭제 시 등)
       if (response.status === 204) return null;
 
       const data = await response.json();
-      
+
       // 백엔드의 ApiResponse 규격 (success 플래그) 확인
       if (!response.ok || data.success === false) {
-        throw new Error(data.error?.message || 'API 요청에 실패했습니다.');
+        throw new Error(data.error?.message || data.message || 'API 요청에 실패했습니다.');
       }
-      
-      return data.data;
+
+      return data.data || data; // 백엔드 응답 구조에 맞게 유연하게 반환
     } catch (error) {
       console.error('API 통신 에러:', error);
       throw error;
@@ -66,18 +81,16 @@ export default function App() {
     setError('');
     try {
       let endpoint = '/contents';
-      
+
       // 검색어가 존재할 경우 검색 API(/contents/search) 호출
       if (currentSearchParams.keyword) {
         const params = new URLSearchParams();
-        // 백엔드 ContentSearchCondition의 필드명에 맞게 type(예: title, createdBy)을 전송합니다.
         params.append(currentSearchParams.type, currentSearchParams.keyword);
         endpoint = `/contents/search?${params.toString()}`;
       }
-      
+
       const data = await apiFetch(endpoint);
-      // PageResponse 구조 (data.content 안에 배열이 있음) 대응
-      setContents(data.content || data || []); 
+      setContents(data.content || data || []);
     } catch (err) {
       setError('목록을 불러오는 중 오류가 발생했습니다.');
       setContents([]);
@@ -110,6 +123,16 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
+  // --- 공통: 로그아웃 처리 ---
+  const handleLogout = () => {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('username');
+    localStorage.removeItem('accessExp');
+    setAuth({ token: null, username: null });
+    setTokenExpirations({ access: null, refresh: null });
+    setView('list');
+  };
+
   // --- 컴포넌트들 ---
 
   const Header = () => (
@@ -127,8 +150,8 @@ export default function App() {
               <span className="text-sm font-medium text-gray-600 flex items-center">
                 <User className="w-4 h-4 mr-1" /> {auth.username}님
               </span>
-              <button 
-                onClick={() => setAuth({ token: null, username: null })}
+              <button
+                onClick={handleLogout}
                 className="text-sm text-gray-500 hover:text-gray-800 flex items-center transition-colors"
               >
                 <LogOut className="w-4 h-4 mr-1" /> 로그아웃
@@ -149,6 +172,105 @@ export default function App() {
     </header>
   );
 
+  // --- 토큰 타이머 및 Reissue 관리 배너 ---
+  const TokenManagerBanner = () => {
+    const [now, setNow] = useState(Date.now());
+    const [isReissuing, setIsReissuing] = useState(false);
+
+    // 1초마다 현재 시간 업데이트
+    useEffect(() => {
+      if (!auth.token) return;
+      const interval = setInterval(() => setNow(Date.now()), 1000);
+      return () => clearInterval(interval);
+    }, [auth.token]);
+
+    if (!auth.token) return null;
+
+    // 밀리초를 hh:mm:ss 로 포맷팅
+    const formatTimeLeft = (expirationTime) => {
+      if (!expirationTime) return '--:--';
+      const diff = Math.floor((expirationTime - now) / 1000);
+
+      if (diff <= 0) return '만료됨';
+
+      const d = Math.floor(diff / (24 * 3600));
+      const h = Math.floor((diff % (24 * 3600)) / 3600);
+      const m = Math.floor((diff % 3600) / 60).toString().padStart(2, '0');
+      const s = (diff % 60).toString().padStart(2, '0');
+
+      if (d > 0) return `${d}일 ${h}시간 ${m}분 ${s}초`;
+      if (h > 0) return `${h}시간 ${m}분 ${s}초`;
+      return `${m}분 ${s}초`;
+    };
+
+    const isAccessExpired = tokenExpirations.access && (tokenExpirations.access - now <= 0);
+
+    const handleReissue = async () => {
+      setIsReissuing(true);
+      try {
+        const data = await apiFetch('/auth/reissue', { method: 'POST' });
+
+        // Reissue 성공 시 새로운 토큰 시간 적용
+        // accessTokenExpiration 은 서버에서 long 값(예: 3600000 = 1시간)으로 반환한다고 가정
+        const accessExpDuration = data.accessTokenExpiration * 1000 || 3600000;
+
+        setTokenExpirations({
+          access: Date.now() + accessExpDuration,
+        });
+        setAuth(prev => ({ ...prev, token: data.accessToken }))
+        localStorage.setItem('accessExp', Date.now() + data.accessTokenExpiration * 1000);
+
+      } catch (err) {
+        alert('토큰 갱신에 실패했습니다. 다시 로그인해주세요.\n' + err.message);
+        handleLogout();
+      } finally {
+        setIsReissuing(false);
+      }
+    };
+
+    return (
+      <div className={`border-b px-4 py-2.5 flex items-center justify-between text-sm transition-colors ${isAccessExpired ? 'bg-red-50 border-red-200' : 'bg-indigo-50 border-indigo-100'}`}>
+        <div className="max-w-5xl mx-auto w-full flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center space-x-6">
+            <div className="flex items-center font-medium text-indigo-900">
+              <ShieldCheck className="w-4 h-4 mr-1.5 text-indigo-600" />
+              보안 세션 상태
+            </div>
+
+            <div className="flex items-center space-x-4">
+              {/* Access Token 타이머 */}
+              <div className={`flex items-center space-x-1.5 ${isAccessExpired ? 'text-red-600 font-bold' : 'text-gray-700'}`}>
+                <Timer className="w-4 h-4" />
+                <span>Access:</span>
+                <span className="tabular-nums font-mono">{formatTimeLeft(tokenExpirations.access)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center">
+            {isAccessExpired && (
+              <span className="flex items-center text-red-600 mr-3 text-xs font-semibold">
+                <AlertCircle className="w-3.5 h-3.5 mr-1" />
+                토큰 만료됨 (갱신 필요)
+              </span>
+            )}
+            <button
+              onClick={handleReissue}
+              disabled={isReissuing}
+              className={`flex items-center px-3 py-1.5 text-xs font-medium rounded-md transition-all shadow-sm
+                ${isReissuing
+                ? 'bg-indigo-200 text-indigo-500 cursor-not-allowed'
+                : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'}`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isReissuing ? 'animate-spin' : ''}`} />
+              {isReissuing ? '갱신 중...' : '토큰 연장하기 (Reissue)'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const LoginView = () => {
     const [formData, setFormData] = useState({ username: '', password: '' });
     const [localError, setLocalError] = useState('');
@@ -156,13 +278,23 @@ export default function App() {
     const handleSubmit = async (e) => {
       e.preventDefault();
       try {
-        const data = await apiFetch('/auth/sign-in', { 
-          method: 'POST', 
-          body: JSON.stringify(formData) 
+        const data = await apiFetch('/auth/sign-in', {
+          method: 'POST',
+          body: JSON.stringify(formData)
         });
-        
+
+        // 로그인 성공 시 응답받은 accessTokenExpiration 적용 (없을 시 기본 1시간)
+        const accessExpDuration = data.accessTokenExpiration * 1000 || 3600000;
+
         setAuth({ token: data.accessToken, username: formData.username });
+        setTokenExpirations({
+          access: Date.now() + accessExpDuration,
+        });
+        localStorage.setItem('accessExp', Date.now() + accessExpDuration)
+        localStorage.setItem('accessToken', data.accessToken);
+        localStorage.setItem('username', formData.username);
         setView('list');
+
       } catch (err) {
         setLocalError(err.message);
       }
@@ -175,7 +307,7 @@ export default function App() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">아이디</label>
-            <input 
+            <input
               type="text" required
               className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
               value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})}
@@ -183,7 +315,7 @@ export default function App() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">비밀번호</label>
-            <input 
+            <input
               type="password" required
               className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
               value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})}
@@ -204,9 +336,9 @@ export default function App() {
     const handleSubmit = async (e) => {
       e.preventDefault();
       try {
-        await apiFetch('/auth/sign-up', { 
-          method: 'POST', 
-          body: JSON.stringify(formData) 
+        await apiFetch('/auth/sign-up', {
+          method: 'POST',
+          body: JSON.stringify(formData)
         });
         alert('회원가입이 완료되었습니다. 로그인해주세요.');
         setView('login');
@@ -222,7 +354,7 @@ export default function App() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">아이디</label>
-            <input 
+            <input
               type="text" required maxLength="50"
               className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
               value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})}
@@ -230,7 +362,7 @@ export default function App() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">비밀번호</label>
-            <input 
+            <input
               type="password" required
               className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
               value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})}
@@ -238,7 +370,7 @@ export default function App() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">이름</label>
-            <input 
+            <input
               type="text" required maxLength="50"
               className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
               value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})}
@@ -281,7 +413,7 @@ export default function App() {
             <p className="text-sm text-gray-500 mt-1">총 {contents.length}개의 게시물이 있습니다.</p>
           </div>
           {auth.token && (
-            <button 
+            <button
               onClick={() => { setSelectedContent(null); setView('form'); }}
               className="flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
             >
@@ -293,19 +425,18 @@ export default function App() {
         {/* --- 검색 바 UI --- */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6">
           <form onSubmit={handleSearch} className="flex flex-wrap sm:flex-nowrap gap-3 items-center">
-            <select 
+            <select
               value={localType}
               onChange={(e) => setLocalType(e.target.value)}
               className="px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm bg-white min-w-[100px]"
             >
-              {/* 백엔드 ContentSearchCondition 변수명에 맞게 옵션 value를 변경하세요. */}
               <option value="title">제목</option>
               <option value="createdBy">작성자</option>
             </select>
-            
+
             <div className="relative flex-1 min-w-[200px]">
               <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <input 
+              <input
                 type="text"
                 placeholder="검색어를 입력하세요..."
                 value={localKeyword}
@@ -313,16 +444,15 @@ export default function App() {
                 className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
               />
             </div>
-            
+
             <button type="submit" className="px-6 py-2.5 bg-gray-800 text-white text-sm font-medium rounded-lg hover:bg-gray-900 transition-colors whitespace-nowrap shadow-sm">
               검색
             </button>
 
-            {/* 검색어가 적용된 상태라면 초기화 버튼 노출 */}
             {searchParams.keyword && (
-              <button 
-                type="button" 
-                onClick={handleResetSearch} 
+              <button
+                type="button"
+                onClick={handleResetSearch}
                 className="px-4 py-2.5 bg-gray-100 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors whitespace-nowrap flex items-center"
               >
                 <RotateCcw className="w-4 h-4 mr-1" /> 초기화
@@ -345,30 +475,30 @@ export default function App() {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-[600px]">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-16 text-center">ID</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">제목</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-32 text-center">작성자</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24 text-center">조회수</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-32 text-center">작성일</th>
-                  </tr>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-16 text-center">ID</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">제목</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-32 text-center">작성자</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-24 text-center">조회수</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-32 text-center">작성일</th>
+                </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {contents.map((item) => (
-                    <tr 
-                      key={item.id} 
-                      onClick={() => fetchContentDetail(item.id)}
-                      className="hover:bg-blue-50/50 cursor-pointer transition-colors group"
-                    >
-                      <td className="px-6 py-4 text-sm text-gray-500 text-center">{item.id}</td>
-                      <td className="px-6 py-4 text-sm font-medium text-gray-900 group-hover:text-blue-600 transition-colors">{item.title}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600 text-center">{item.createdBy}</td>
-                      <td className="px-6 py-4 text-sm text-gray-500 text-center">{item.viewCount}</td>
-                      <td className="px-6 py-4 text-sm text-gray-500 text-center">
-                        {new Date(item.createdDate).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
+                {contents.map((item) => (
+                  <tr
+                    key={item.id}
+                    onClick={() => fetchContentDetail(item.id)}
+                    className="hover:bg-blue-50/50 cursor-pointer transition-colors group"
+                  >
+                    <td className="px-6 py-4 text-sm text-gray-500 text-center">{item.id}</td>
+                    <td className="px-6 py-4 text-sm font-medium text-gray-900 group-hover:text-blue-600 transition-colors">{item.title}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 text-center">{item.createdBy}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500 text-center">{item.viewCount}</td>
+                    <td className="px-6 py-4 text-sm text-gray-500 text-center">
+                      {new Date(item.createdDate).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
                 </tbody>
               </table>
             </div>
@@ -407,20 +537,20 @@ export default function App() {
               <span className="flex items-center"><Eye className="w-4 h-4 mr-1.5" /> 조회수 {selectedContent.viewCount}</span>
             </div>
           </div>
-          
+
           <div className="p-8 min-h-[200px] text-gray-800 whitespace-pre-wrap leading-relaxed text-lg">
             {selectedContent.description || <span className="text-gray-400 italic">내용이 없습니다.</span>}
           </div>
 
           {isOwner && (
             <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end space-x-3">
-              <button 
+              <button
                 onClick={() => setView('form')}
                 className="flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm"
               >
                 <Edit className="w-4 h-4 mr-2" /> 수정
               </button>
-              <button 
+              <button
                 onClick={handleDelete}
                 className="flex items-center px-4 py-2 bg-red-50 text-red-600 border border-red-200 text-sm font-medium rounded-lg hover:bg-red-100 transition-colors shadow-sm"
               >
@@ -444,15 +574,15 @@ export default function App() {
       e.preventDefault();
       try {
         if (isEdit) {
-          await apiFetch(`/contents/${selectedContent.id}`, { 
-            method: 'PATCH', 
-            body: JSON.stringify(formData) 
+          await apiFetch(`/contents/${selectedContent.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(formData)
           });
           fetchContentDetail(selectedContent.id); // 수정 후 상세조회로 이동
         } else {
-          await apiFetch('/contents', { 
-            method: 'POST', 
-            body: JSON.stringify(formData) 
+          await apiFetch('/contents', {
+            method: 'POST',
+            body: JSON.stringify(formData)
           });
           setView('list');
         }
@@ -469,11 +599,11 @@ export default function App() {
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">{isEdit ? '컨텐츠 수정' : '새 컨텐츠 작성'}</h2>
-          
+
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">제목 <span className="text-red-500">*</span></label>
-              <input 
+              <input
                 type="text" required maxLength="100" placeholder="제목을 입력하세요 (최대 100자)"
                 className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-lg font-medium"
                 value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})}
@@ -481,7 +611,7 @@ export default function App() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">내용</label>
-              <textarea 
+              <textarea
                 maxLength="255" rows="8" placeholder="내용을 입력하세요 (최대 255자)"
                 className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all resize-none"
                 value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})}
@@ -501,6 +631,9 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
       <Header />
+      {/* 로그인 시 나타나는 Token Manager Banner 추가 */}
+      <TokenManagerBanner />
+
       <main className="pb-20">
         {view === 'login' && <LoginView />}
         {view === 'signup' && <SignupView />}
