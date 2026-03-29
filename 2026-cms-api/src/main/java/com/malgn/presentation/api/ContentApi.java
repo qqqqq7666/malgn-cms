@@ -49,7 +49,7 @@ public interface ContentApi {
 
     @Operation(summary = "콘텐츠 상세 조회", operationId = "content-04")
     ResponseEntity<ApiResponse<ContentDetailResponse>> getContentDetail(
-            @Parameter(description = "콘텐츠 ID", example = "10") @PathVariable Long id);
+            @Parameter(description = "콘텐츠 ID", example = "1") @PathVariable Long id);
 
     @Operation(summary = "콘텐츠 수정", description = "본인의 게시글만 수정 가능합니다.", operationId = "content-05")
     ResponseEntity<ApiResponse<ContentUpdateResponse>> update(

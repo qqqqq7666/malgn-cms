@@ -20,14 +20,12 @@ public enum ErrorCode {
     UNSUPPORTED_TOKEN(401, "A004", "지원되지 않는 토큰 형식입니다."),
     TOKEN_SIGNATURE_ERROR(401, "A005", "토큰이 서명이 올바르지 않습니다."),
     TOKEN_NOT_FOUND(401, "A006", "토큰이 존재하지 않습니다."),
-    INVALID_CREDENTIALS(401, "A007", "아이디 또는 비밀번호가 일치하지 않습니다") ,
+    INVALID_CREDENTIALS(401, "A007", "아이디 또는 비밀번호가 일치하지 않습니다"),
 
     // Common
     INTERNAL_SERVER_ERROR(500, "S001", "서버 내부 오류가 발생했습니다."),
     INVALID_INPUT(400, "S002", "잘못된 입력값입니다."),
-    NOT_FOUND(404, "S003", "요청에 대한 데이터가 존재하지 않습니다.");
-
-    ;
+    NOT_FOUND(404, "S003", "요청에 대한 데이터가 존재하지 않습니다.");;
 
     private final int status;
     private final String code;
