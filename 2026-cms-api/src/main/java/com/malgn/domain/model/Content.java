@@ -13,7 +13,10 @@ import java.util.Objects;
 @Entity
 @Table(
         name = "contents",
-        indexes = @Index(columnList = "id, created_date DESC")
+        indexes = {
+                @Index(name = "idx_contents_created_date", columnList = "created_date DESC"),
+                @Index(name = "idx_contents_member_id", columnList = "member_id")
+        }
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @EntityListeners(AuditingEntityListener.class)

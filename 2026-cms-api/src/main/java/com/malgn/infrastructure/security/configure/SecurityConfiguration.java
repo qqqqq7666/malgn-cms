@@ -41,7 +41,7 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.POST, "/api/v1/contents").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/contents/**").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/contents/**").authenticated()
-                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/v1/admin/**").hasAuthority("ADMIN")
                         .anyRequest().permitAll()
         );
 
@@ -74,7 +74,7 @@ public class SecurityConfiguration {
     @Bean
     public CorsConfigurationSource configurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("https://kcjin-malgn-cms.vercel.app", "http://localhost:5173/"));
+        configuration.setAllowedOrigins(List.of("https://kcjin-malgn-cms.vercel.app", "http://localhost:5173"));
         configuration.setAllowedMethods(List.of("*"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
