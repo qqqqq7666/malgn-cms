@@ -208,7 +208,7 @@ export default function App() {
     const handleReissue = async () => {
       setIsReissuing(true);
       try {
-        const data = await apiFetch('/auth/reissue', { method: 'POST' });
+        const data = await apiFetch('/auth/reissue', { method: 'POST', credentials: 'include'});
 
         // Reissue 성공 시 새로운 토큰 시간 적용
         // accessTokenExpiration 은 서버에서 long 값(예: 3600000 = 1시간)으로 반환한다고 가정
