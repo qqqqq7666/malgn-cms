@@ -4,7 +4,7 @@ import { User, LogOut, Edit, Trash2, Plus, ArrowLeft, Search, Eye, Clock, Rotate
 // ==========================================
 // 백엔드 API 주소 설정
 // ==========================================
-const API_BASE = 'http://kcjin-malgn-cms.o-r.kr:8080/api/v1';
+const API_BASE = 'http://www.kcjin-malgn-cms.o-r.kr:8080/api/v1';
 
 // ==========================================
 // 메인 App 컴포넌트
