@@ -23,15 +23,9 @@ public class SwaggerConfiguration {
                 .in(SecurityScheme.In.HEADER)
                 .name("Authorization");
 
-        SecurityScheme cookieAuth = new SecurityScheme()
-                .type(SecurityScheme.Type.APIKEY)
-                .in(SecurityScheme.In.COOKIE)
-                .name("refreshToken");
-
         // Security Requirement 정의
         SecurityRequirement securityRequirement = new SecurityRequirement()
-                .addList("BearerAuth")
-                .addList("CookieAuth");
+                .addList("BearerAuth");
 
         return new OpenAPI()
                 .info(new Info().title("CMS API")
@@ -39,7 +33,6 @@ public class SwaggerConfiguration {
                         .version("v1.0"))
                 .addSecurityItem(securityRequirement)
                 .schemaRequirement("BearerAuth", securityScheme)
-                .schemaRequirement("CookieAuth", cookieAuth)
                 .servers(List.of(
                         new Server().url("https://kcjin-malgn-cms.o-r.kr").description("Production Server (HTTPS)"),
                         new Server().url("http://localhost:8080").description("Local Server (HTTP)")

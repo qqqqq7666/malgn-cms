@@ -30,8 +30,16 @@ public interface AuthApi {
             @RequestBody SignInRequest request,
             @Parameter(hidden = true) HttpServletResponse response);
 
-    @Operation(summary = "토큰 재발급", description = "Refresh Token으로 Access Token을 갱신합니다.", operationId = "auth-03")
+    @Operation(
+            summary = "토큰 재발급",
+            description = "Refresh Token으로 Access Token을 갱신합니다.<br><br>" +
+                    "**💡 Swagger 테스트 안내**<br>" +
+                    "- Refresh Token은 보안을 위해 **HttpOnly Cookie**로 발급 및 관리됩니다.<br>" +
+                    "- 브라우저 정책상 Swagger UI에서 HttpOnly 쿠키값을 직접 입력하거나 확인할 수 없습니다.<br>" +
+                    "- **테스트 방법:** 먼저 `[로그인 API]`를 실행하여 브라우저에 쿠키를 정상적으로 세팅한 후, 본 API의 `Execute` 버튼을 눌러주세요.",
+            operationId = "auth-03"
+    )
     ResponseEntity<ApiResponse<AuthTokenResponse>> reissue(
-            @Parameter(description = "리프레시 토큰", example = "eyJhbGci...") String refreshToken,
+            @Parameter(hidden = true) String refreshToken,
             @Parameter(hidden = true) HttpServletResponse response);
 }
